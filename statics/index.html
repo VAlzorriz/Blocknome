@@ -1,0 +1,1043 @@
+<html>
+
+<head>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/rete@1.0.0-alpha.9/build/rete.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alight@0.14.1/alight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/rete-alight-render-plugin@0.1.5/build/alight-render-plugin.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/rete-connection-plugin@0.1.2/build/connection-plugin.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/rete-context-menu-plugin@0.1.4/build/context-menu-plugin.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/rete-task-plugin@0.1.7/build/task-plugin.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/rete-dock-plugin@0.2.0/build/dock-plugin.min.js"></script>
+</head>
+
+<body>
+<div id="rete">
+    <div class="pannel" id="right-panel">
+        <div class="expand-tab expand-tab-right" onclick="toggleRightPanel()"><img src="./assets/full-screen.png" alt=""></div>
+        <div id="content">
+            <div class="header">
+                <h3 id="query"></h3>
+            </div>
+            <div class="content">
+                <p class="description"><i>Run "EXECUTE" to get text result of connected blocks.</i></p>
+                <div class="options">
+                    <div class="querie-container">
+                        <p class="querie-text" id="mymarker"></p>
+                    </div>
+                    <button id="query-button">Execute</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-pannel narrow" id="popup-panel">
+        <div class="expand-tab expand-tab-bottom" onclick="toggleBottomPanel()"><img src="./assets/block-scheme.png" alt=""></div>
+        <div class="header">
+            <h3>BLOCK TIPS</h3>
+        </div>
+        <div id="notice-msg">
+            <p><i>Please clikck on the block to see tips how to use it.</i></p>
+        </div>
+        <div class="wrapper">
+        <div id="video">
+            <video autoplay loop></video>
+        </div>
+        <div class="block-info" id="block-info">
+            <h4 id="block-title"></h4>
+            <p>Description:</p>
+            <p id="block-description"></p>
+        </div>
+        </div>
+    </div>
+    <div id="exeption"></div>
+</div>
+</body>
+<script>
+    var datasetSocket = new Rete.Socket('Dataset');
+    var conditionSocket = new Rete.Socket('Condition');
+    var symbolSocket = new Rete.Socket('Symbol');
+    var valueSocket = new Rete.Socket('Value');
+    var outpSocket = new Rete.Socket('Outp');
+    //var saveSocket = new Rete.Socket('Save');
+
+    var node = document.getElementById('query');
+    var nodeText = "query";
+    node.textContent = nodeText;
+
+    var eventHandlers = {
+        list: [],
+        remove() {
+            this
+                .list
+                .forEach(h => {
+                    document.removeEventListener('keydown', h);
+                });
+            this.list = [];
+        },
+        add(name, h) {
+            document.addEventListener(name, h, false);
+            this
+                .list
+                .push(h);
+        }
+    };
+
+    class MessageControl extends Rete.Control {
+
+        constructor(emitter, msg) {
+            super();
+            this.emitter = emitter;
+            this.template = '<input :value="msg" @input="change($event)"/>';
+
+            this.scope = {
+                msg,
+                change: this.change.bind(this)
+            };
+        }
+
+        change(e) {
+            this.scope.value = e.target.value;
+            this.update();
+        }
+
+        update() {
+            this.putData('msg', this.scope.value)
+            this.emitter.trigger('process');
+            this._alight.scan();
+        }
+
+        mounted() {
+            this.scope.value = this.getData('msg') || 0;
+            this.update();
+        }
+
+        setValue(val) {
+            this.scope.value = val;
+            this._alight.scan()
+        }
+    }
+
+    class DatasetComponent extends Rete.Component {
+        constructor() {
+            super("Dataset");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var out = new Rete.Output("dataset", "Dataset", datasetSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addOutput(out).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class FilterComponent extends Rete.Component {
+        constructor() {
+            super("Filter");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("dataset", "Dataset", datasetSocket);
+            var inp2 = new Rete.Input("dataset2", "2º Dataset (For map)", datasetSocket);
+            var out1 = new Rete.Output("condition", "Conditions", conditionSocket);
+            var out2 = new Rete.Output("output", "Output", outpSocket);
+
+            node.addInput(inp).addInput(inp2).addOutput(out1).addOutput(out2);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class FieldComponent extends Rete.Component {
+        constructor() {
+            super("Field");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("condition", "Condition", conditionSocket);
+            var out = new Rete.Output("symbol", "Symbol", symbolSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addInput(inp).addOutput(out).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+
+    class SymbolEqualComponent extends Rete.Component {
+        constructor() {
+            super("IS");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("symbol", "Symbol", symbolSocket);
+            var out = new Rete.Output("value", "Value", valueSocket);
+
+            node.addInput(inp).addOutput(out);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class SymbolLessThanComponent extends Rete.Component {
+        constructor() {
+            super("SMALLER THAN");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("symbol", "Symbol", symbolSocket);
+            var out = new Rete.Output("value", "Value", valueSocket);
+
+            node.addInput(inp).addOutput(out);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class SymbolGreaterThanComponent extends Rete.Component {
+        constructor() {
+            super("HIGHER THAN");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("symbol", "Symbol", symbolSocket);
+            var out = new Rete.Output("value", "Value", valueSocket);
+
+            node.addInput(inp).addOutput(out);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class ValueComponent extends Rete.Component {
+        constructor() {
+            super("Value");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("value", "Value", valueSocket);
+            var out = new Rete.Output("condition", "Condition", conditionSocket);
+            //var out2 = new Rete.Output("save", "Save", saveSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addInput(inp).addOutput(out).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class OperatorAndComponent extends Rete.Component {
+        constructor() {
+            super("AND");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("condition1", "Condition 1", conditionSocket);
+            var out = new Rete.Output("condition2", "Condition 2", conditionSocket);
+
+            node.addInput(inp).addOutput(out);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class OperatorOrComponent extends Rete.Component {
+        constructor() {
+            super("OR");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("condition1", "Condition 1", conditionSocket);
+            var out = new Rete.Output("condition2", "Condition 2", conditionSocket);
+
+            node.addInput(inp).addOutput(out);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class CoverComponent extends Rete.Component {
+        constructor() {
+            super("Cover");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("output1", "Output", outpSocket);
+            var out = new Rete.Output("output2", "Output", outpSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addInput(inp).addOutput(out).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class MapComponent extends Rete.Component {
+        constructor() {
+            super("Map");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp1 = new Rete.Input("output1", "Filter input", outpSocket);
+            //var inp2 = new Rete.Input("output2", "Querie Output 2", outpSocket);
+            //var inp3 = new Rete.Input("output3", "Querry Output 1", outpSocket);
+            var out = new Rete.Output("map", "Map", outpSocket);
+
+            node.addInput(inp1).addOutput(out);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class SaveComponent extends Rete.Component {
+        constructor() {
+            super("Save");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("map", "Map", outpSocket);
+            //var inp2 = new Rete.Input("end_condition", "End_Condition", saveSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addInput(inp).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+
+    //Blocks for Map section -> AVG, MIN, MAX
+
+    class AVGComponent extends Rete.Component {
+        constructor() {
+            super("AVG");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("condition", "Condition", conditionSocket);
+            var out = new Rete.Output("AS", "AS", conditionSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addInput(inp).addOutput(out).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class MINComponent extends Rete.Component {
+        constructor() {
+            super("MIN");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("condition", "Condition", conditionSocket);
+            var out = new Rete.Output("AS", "AS", conditionSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addInput(inp).addOutput(out).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class MAXComponent extends Rete.Component {
+        constructor() {
+            super("MAX");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("condition", "Condition", conditionSocket);
+            var out = new Rete.Output("AS", "AS", conditionSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addInput(inp).addOutput(out).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+    class ASComponent extends Rete.Component {
+        constructor() {
+            super("AS");
+            this.task = {
+                outputs: {}
+            }
+        }
+
+        builder(node) {
+            var inp = new Rete.Input("condition", "Condition", conditionSocket);
+            var con = new MessageControl(this.editor, node.data.msg);
+
+            node.addInput(inp).addControl(con);
+        }
+
+        worker(node, inputs, outputs) {
+
+        }
+    }
+
+
+    var components = [
+        new DatasetComponent,
+        new FilterComponent,
+        new FieldComponent,
+        new SymbolEqualComponent,
+        new SymbolGreaterThanComponent,
+        new SymbolLessThanComponent,
+        new ValueComponent,
+        new OperatorAndComponent,
+        new OperatorOrComponent,
+        new CoverComponent,
+        new MapComponent,
+        new SaveComponent,
+        new AVGComponent,
+        new MINComponent,
+        new MAXComponent,
+        new ASComponent
+    ];
+    var container = document.querySelector('#rete');
+
+    var editor = new Rete.NodeEditor('tasksample@0.1.0', container,);
+    editor.use(AlightRenderPlugin);
+    editor.use(ConnectionPlugin);
+    editor.use(ContextMenuPlugin);
+    editor.use(TaskPlugin);
+
+    var engine = new Rete.Engine('tasksample@0.1.0');
+
+    components.map(c => {
+        editor.register(c);
+        engine.register(c);
+    });
+
+    editor.on('connectioncreate connectionremove nodecreate noderemove', () => {
+        if (editor.silent) return;
+
+        compile();
+    });
+
+    async function compile() {
+        await engine.abort();
+        await engine.process(editor.toJSON());
+    }
+
+    var data = {
+        'id': 'tasksample@0.1.0',
+        'nodes': {
+            '1': {
+                'id': 1,
+                'data': {
+                    'msg': 'Dataset_Name'
+                },
+                'group': null,
+                'inputs': {},
+                'outputs': {
+                    'dataset': {
+                        'connections': [{
+                            'node': 2,
+                            'input': 'dataset'
+                        }]
+                    }
+                },
+                'position': [
+                    100, 200
+                ],
+                'name': 'Dataset'
+            },
+            '2': {
+                'id': 2,
+                'data': {},
+                'group': null,
+                'inputs': {
+                    'dataset': {
+                        'connections': [{
+                            'node': 1,
+                            'output': 'dataset'
+                        }]
+                    }
+                },
+                'outputs': {
+                    'condition': {
+                        'connections': [{
+                            'node': 3,
+                            'input': 'condition'
+                        }]
+                    },
+                    'output': {
+                        'connections': [{
+                            'node': 6,
+                            'input': 'map'
+                        }]
+                    }
+                },
+                'position': [
+                    400, 200
+                ],
+                'name': 'Filter'
+            },
+            '3': {
+                'id': 3,
+                'data': {
+                    'msg': 'Field Name'
+                },
+                'group': null,
+                'inputs': {
+                    'condition': {
+                        'connections': [{
+                            'node': 2,
+                            'output': 'condition'
+                        }]
+                    }
+                },
+                'outputs': {
+                    'symbol': {
+                        'connections': [{
+                            'node': 4,
+                            'input': 'symbol'
+                        }]
+                    }
+                },
+                'position': [
+                    700, 100
+                ],
+                'name': 'Field'
+            },
+            '4': {
+                'id': 4,
+                'data': {},
+                'group': null,
+                'inputs': {
+                    'symbol': {
+                        'connections': [{
+                            'node': 3,
+                            'output': 'symbol'
+                        }]
+                    }
+                },
+                'outputs': {
+                    'value': {
+                        'connections': [{
+                            'node': 5,
+                            'input': 'value'
+                        }]
+                    }
+                },
+                'position': [
+                    1000, 100
+                ],
+                'name': 'IS'
+            },
+            '5': {
+                'id': 5,
+                'data': {
+                    'msg': 'Value'
+                },
+                'group': null,
+                'inputs': {
+                    'value': {
+                        'connections': [{
+                            'node': 4,
+                            'output': 'value'
+                        }]
+                    }
+                },
+                'outputs': {},
+                'position': [
+                    1300, 100
+                ],
+                'name': 'Value'
+            },
+            '6': {
+                'id': 6,
+                'data': {
+                    'msg': 'URL'
+                },
+                'group': null,
+                'inputs': {
+                    'output1': {
+                        'connections': [{
+                            'node': 2,
+                            'output': 'output'
+                        }]
+                    }
+                },
+
+                'outputs': {},
+                'position': [
+                    750, 400
+                ],
+                'name': 'Save'
+            },
+        },
+        'groups': {},
+    }
+
+    editor.fromJSON(data).then(() => {
+        editor.view.resize();
+        compile();
+    });
+
+
+    var button = document.getElementById("query-button");
+    var marker = document.getElementById("mymarker");
+    var exeptionMsg = document.getElementById("exeption");
+    var querie = "";
+    var exception = "";
+
+    //show tutorial animations on specifin block cick
+    var first_ckick_field_block = 0;
+    var first_ckick_no_field_block = 0;
+    var first_ckick_operator = 0;
+    var first_ckick_url_block = 0;
+
+    window.onclick = function target_block(event) {
+        var panel = document.getElementById('popup-panel');
+
+        var classList = event.target.parentNode.classList.value;
+        var dataset = classList.includes('dataset');
+        var filter = classList.includes('filter');
+        var is = classList.includes('is');
+        var higher = classList.includes('higher-than');
+        var lower = classList.includes('smaller-than');
+        var field = classList.includes('field');
+        var save = classList.includes('save');
+        var value = classList.includes('value');
+        var pannel = classList.includes('bottom-pannel');
+
+        var description = document.getElementById("block-description");
+        var title = document.getElementById("block-title");
+
+        var sources = document.getElementsByTagName("video")[0];
+
+        if (dataset || value || field) {
+
+            sources.setAttribute("src", 'assets/dataset.mp4');
+            title.innerHTML = "Blocks containing field content";
+            description.innerHTML = "Add in the blanch space the information corresponding to the name of the block";
+            document.getElementById('block-info').classList.remove('hide');
+            document.getElementById('notice-msg').classList.add('hide');
+            if (first_ckick_field_block === 0) {
+                panel.classList.add('show');
+            }
+            first_ckick_field_block++;
+
+        } else if (filter) {
+            sources.setAttribute("src", 'assets/filter.mp4');
+            title.innerHTML = "Filter block";
+            description.innerHTML = "It's the core of the query. The filter block has as an input one/two databases block, and as an output the filter itself and the result of applying that filter, that can be registered connecting it to the save block"
+            document.getElementById('block-info').classList.remove('hide');
+            document.getElementById('notice-msg').classList.add('hide');
+            if (first_ckick_no_field_block === 0) {
+                panel.classList.add('show');
+            }
+            first_ckick_no_field_block++;
+
+        } else if (is || higher || lower) {
+            sources.setAttribute("src", 'assets/operations.mp4');
+            title.innerHTML = "Blocks operators";
+            description.innerHTML = "Blocks that permits the comparision between values of a database column, and a value to choose by the user. With this you obtain the data that accomplish the condition"
+            document.getElementById('block-info').classList.remove('hide');
+            document.getElementById('notice-msg').classList.add('hide');
+            if (first_ckick_operator  === 0) {
+                panel.classList.add('show');
+            }
+            first_ckick_operator++;
+
+        } else if (save) {
+            sources.setAttribute("src", 'assets/map_and_save.mp4');
+            title.innerHTML = "Save block";
+            description.innerHTML = "Can be connected to the filter, cover or map block. The user has to fill the blanch space with the name of the output database where he wants to record the data"
+            document.getElementById('block-info').classList.remove('hide');
+            document.getElementById('notice-msg').classList.add('hide');
+            if (first_ckick_url_block  === 0) {
+                panel.classList.add('show');
+            }
+            first_ckick_url_block++;
+        } else {
+            if (!pannel) {
+                sources.setAttribute("src", '');
+                document.getElementById('block-info').classList.add('hide');
+                document.getElementById('notice-msg').classList.remove('hide');
+            }
+        }
+    };
+
+
+    function toggleBottomPanel() {
+        var panel = document.getElementById('popup-panel');
+
+        if (panel.classList.contains('show'))
+     {
+         panel.classList.remove('show');
+     } else {
+            panel.classList.add('show');
+        }
+    }
+
+    function toggleRightPanel() {
+        var bottomPanel = document.getElementById('popup-panel');
+        var rightPanel = document.getElementById('right-panel');
+
+            if (!rightPanel.classList.contains('hide')) {
+                bottomPanel.classList.remove('narrow');
+                document.getElementById('right-panel').classList.add('hide');
+                document.getElementById('content').classList.add('hide');
+            } else {
+                bottomPanel.classList.add('narrow');
+                document.getElementById('right-panel').classList.remove('hide');
+                document.getElementById('content').classList.remove('hide');
+            }
+    }
+
+    button.onclick = function () {
+
+        querie = "";
+        exception = "";
+
+        json = editor.toJSON().nodes;
+
+        try{
+          var is_save_block = false;
+          for(i in json){
+            if (json[i].name == 'Save'){
+              is_save_block = true;
+              if(json[i].data.msg == ''){
+                throw "There's no output name";
+              }
+              try{
+                json[i].inputs.map.connections[0].node;
+              }
+              catch(error){
+                exception += "The save block is not connected";
+              }
+              querie = json[i].data.msg + " = ";
+          }
+        }
+        if (!is_save_block){
+          throw  "The save block is missing";
+        }
+        } catch (error) {
+          exception += error  + "<br/>";
+        }
+
+
+        //Decide whether is a map or normal querie
+
+        var is_map_querie = false;
+        var is_cover_querie = false;
+        for (i in json) {
+          if (json[i].name == 'Map') {
+            is_map_querie = true;
+              break;
+            }
+        }
+
+        for (i in json) {
+          if (json[i].name == 'Cover') {
+            is_cover_querie = true;
+            break;
+            }
+        }
+
+        //What happens if both block are in the editor?
+        //Choose the one that is connected to the filter block
+
+        if (is_map_querie & is_cover_querie) {
+            try {
+                for (i in json) {
+                    if (json[i].name == "Filter") {
+                        var index = json[i].outputs.output.connections[0].node;
+                        if (json[index].name == "Cover") {
+                            is_map_querie = false;
+                        } else {
+                            is_cover_querie = false;
+                        }
+                        break;
+                    }
+                }
+            } catch (error) {
+            }
+        }
+
+        //SELECT QUERIE
+        if (!is_map_querie & !is_cover_querie) {
+            try {
+                for (i in json) {
+                    if (json[i].name == 'Dataset') {
+                        let dataset_node = i;
+                        if (json[i].data.msg == '') {
+                            throw "There's no output name";
+                        } else {
+                            var next_node_id = json[i].outputs.dataset.connections[0].node;
+                            var block_name = json[next_node_id].name;
+                            querie += "SELECT (";
+                            if (block_name == 'Filter') {
+                                try {
+                                    if (json[next_node_id].outputs.condition.connections[0].node != null) {
+                                        condition_block(next_node_id);
+                                    }
+                                } catch (error) {
+                                    querie += ")";//there's no filter
+                                }
+                            }
+                            querie += " " + json[dataset_node].data.msg;
+                            break;
+                        }
+                    }
+                }
+            } catch (error) {
+                exception += error + "<br/>";
+            }
+        }
+        //MAP QUERIE
+
+        else if (is_map_querie) {
+            for (i in json) {
+                if (json[i].name == 'Filter') {
+                    try {
+                        json[i].outputs.output.connections[0].node;
+                    } catch (error) {
+                        exception += "The filter block is not connected to the map block";
+                        break;
+                    }
+                    try {
+                        var index1, index2, db1, db2, as_content;
+                        index1 = json[i].inputs.dataset.connections[0].node;
+                        index2 = json[i].inputs.dataset2.connections[0].node;
+                        db1 = json[index1].data.msg;
+                        db2 = json[index2].data.msg;
+
+                        var index3 = json[i].outputs.condition.connections[0].node;
+                        var name_block = json[index3].name;
+                        if (name_block != 'AVG' & name_block != 'MIN' & name_block != 'MAX') {
+                            throw "Filter in map should be AVG, MIN or MAX blocks";
+                        }
+                        var value = json[index3].data.msg;
+
+                        try {
+                            var as_index = json[index3].outputs.AS.connections[0].node;
+                            as_content = json[as_index].data.msg;
+                        } catch (error) {
+                            exception += "Name the output for saving the result of the column. i.e -> x AS AVG()"
+                        }
+                        querie += "MAP (" + as_content + " AS " + name_block + "(" + value + "))" + db1 + " " + db2;
+                    } catch (error) {
+                        if (error == "Filter in map should be AVG, MIN or MAX blocks") {
+                            exception += "Filter in map should be AVG, MIN or MAX blocks" + "<br/r>";
+                        } else {
+                            exception += "Error on building map query. Missing database/filter blocks" + "<br/>";
+                        }
+                    }
+                }
+            }
+        } else if (is_cover_querie) { //COVER QUERIE
+            for (i in json) {
+                if (json[i].name == 'Filter') {
+                    try {
+                        json[i].outputs.output.connections[0].node;
+                    } catch (error) {
+                        exception += "The filter block is not connected to the cover block";
+                        break;
+                    }
+                    try {
+                        var index, db, index2, cover;
+                        index = json[i].inputs.dataset.connections[0].node; //Cover index
+                        db = json[index].data.msg;
+                        index2 = json[i].outputs.output.connections[0].node;
+                        cover = json[index2].data.msg;
+
+                        try {
+                            if (json[json[index2].outputs.output2.connections[0].node].name != "Save") {
+                                throw error;
+                            }
+                        } catch (error) {
+                            exception += "The cover block should be connected to the save block <br/>";
+                        }
+
+                        var aggregate = false;
+                        try {
+                            var index3 = json[i].outputs.condition.connections[0].node;
+                            var name_block = json[index3].name;
+                            if (name_block != 'AVG' & name_block != 'MIN' & name_block != 'MAX') {
+                                throw "Filter aggregate in cover should be AVG, MIN or MAX blocks";
+                            }
+                            var value = json[index3].data.msg;
+
+                            try {
+                                var as_index = json[index3].outputs.AS.connections[0].node;
+                                var as_content = json[as_index].data.msg;
+                                aggregate = true;
+                            } catch (error) {
+                                exception += "Name the output for saving the result of the column. i.e -> x AS AVG()";
+                            }
+                        } catch (error) {
+                        }
+                        querie += "COVER (" + cover;
+                        if (aggregate) {
+                            querie += ";aggregate: " + as_content + " AS " + name_block + "(" + value + ")";
+                        }
+                        querie += ")" + db;
+                    } catch (error) {
+                        exception += "Error on building cover query. Missing database/filter blocks" + "<br/>";
+                    }
+
+
+                }
+            }
+        }
+
+        update_marker();
+    }
+
+
+    function update_marker() {
+        if (exception != "") {
+            exeptionMsg.innerHTML = "Error" + exception;
+            exeptionMsg.classList.add("warning");
+            exeptionMsg.classList.remove("success");
+            marker.innerHTML = "";
+
+            marker.innerHTML = "Error: " + exception;
+        } else {
+            marker.innerHTML = querie;
+            exeptionMsg.innerHTML = "Successfully executed!";
+            exeptionMsg.classList.add("success");
+            exeptionMsg.classList.remove("warning");
+            //editor.toJSON().queries.queries[editor.toJSON().queries.count] = querie;
+            //editor.toJSON().queries.count++;
+        }
+    }
+
+    function condition_block(filter_id) {
+        //Condition block
+        try {
+            filter_data(filter_id);
+            for (i in json) {
+                if (json[i].name == 'AND' || json[i].name == 'OR') {
+                    querie += " " + json[i].name;
+                    filter_data_2(i);
+                }
+            }
+            querie += ")";
+        } catch (error) {
+            exception += "Error in filter construction: Missing sockets or values" + "<br/>";
+        }
+    }
+
+    function filter_data(cond_id) {
+        var node_field = json[cond_id].outputs.condition.connections[0].node;
+        var field2 = json[node_field].data.msg;
+        var node_op = json[node_field].outputs.symbol.connections[0].node;
+        var op2 = json[node_op].name;
+        if (op2 == "IS") {
+          op2 = "==";
+        }
+        if (op2=="HIGHER THAN"){
+          op2 = ">";
+        }
+        else if (op2 == "SMALLER THAN"){
+          op2 = "<";
+        }
+        var node_value = json[node_op].outputs.value.connections[0].node;
+        var value2 = json[node_value].data.msg;
+        querie += " " + field2 + " " + op2 + " " + value2;
+    }
+
+    function filter_data_2(cond_id) {
+        var node_field = json[cond_id].outputs.condition2.connections[0].node;
+        var field2 = json[node_field].data.msg;
+        var node_op = json[node_field].outputs.symbol.connections[0].node;
+        var op2 = json[node_op].name;
+        if (op2 == "IS") {
+          op2 = "==";
+        }
+        if (op2=="HIGHER THAN"){
+          op2 = ">";
+        }
+        else if (op2 == "SMALLER THAN"){
+          op2 = "<";
+        }
+        var node_value = json[node_op].outputs.value.connections[0].node;
+        var value2 = json[node_value].data.msg;
+        querie += " " + field2 + " " + op2 + " " + value2;
+    }
+
+</script>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "blocknome",
+  "version": "1.0.0",
+  "description": "This is a web server for Blocknome application.",
+  "main": "index.js",
+  "scripts": {
+    "prestart": "npm install",
+    "start": "node index.js"
+  },
+  "license": "Unlicense",
+  "dependencies": {
+    "connect": "^3.7.0",
+    "serve-static": "^1.14.1"
+  }
+}

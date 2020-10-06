@@ -14,7 +14,7 @@ Blocknome is a web interface design to allow the researches of the Genomic Resea
 - Avg / Min / Max / As: the different operations available for the Map operation.
 - Save: to define the URL to save the query.
 
-The Blocknome interface is also designed to be as easy to use as possible for the user, using a color combination to deference the different blocks and give tips on how you can connect each block with others. The interface also has a window at the bottom to present hints and tutorial animations to help the user create queries. In case something is wrong with the query, the interface also gives feedback through error messages to help the user fix it.
+The Blocknome interface is also designed to be as easy to use as possible for the user, using a color combination to deference the different blocks and give tips on how you can connect each block with others. The interface also has a window at the bottom to present hints and tutorial animations to help the user create queries. In case something is wrong with the query, the interface also gives feedback through error messages to help the user fix it. The full web interface is available at the URL "http://blocknome.herokuapp.com/".
 
 ## Team:
 
